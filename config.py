@@ -23,8 +23,6 @@ obj_threshold = 0.3
 nms_threshold = 0.5
 gpu_index = "0"
 log_dir = './logs'
-
-# data_dir = './model_data'
 # model_dir = './test_model/'
 model_dir = './test_model/model.ckpt-37461'
 pre_train_yolo3 = False
@@ -32,8 +30,8 @@ darknet53_weights_path = './model_data/darknet53.weights'
 anchors_path = './model_data/yolo_anchors.txt'
 classes_path = './model_data/detrac_classes.txt'
 
-data_file = '/homeb/shen/Project/Model-debug/yolo3/data/VOC2007'
-record_file = '/homeb/shen/Project/Model-debug/yolo3/data/TFRecord'
-train_annotations_file = '/homeb/shen/Project/Model-debug/yolo3/data/VOC2007/ImageSets/Main/train.txt'
-val_annotations_file = '/homeb/shen/Project/Model-debug/yolo3/data/VOC2007/ImageSets/Main/val.txt'
+data_file = './data/VOC2007'
+record_file = './data/TFRecord'
+train_annotations_file = './data/VOC2007/ImageSets/Main/train.txt'
+val_annotations_file = './data/VOC2007/ImageSets/Main/val.txt'
 label_dict = {'others':0, 'car':1, 'bus':2, 'van':3}
