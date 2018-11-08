@@ -2,47 +2,43 @@
 
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg)](LICENSE)
 
+# Setup environment
+
+1. virtualenv --python=python3.5 py35
+2. source py35/bin/activate
+3. cd [dir of tf-yolo3]
+4. pip install -r requirements.txt
+
 
 ---
-
-## Detection
-
-1、If use the pretrain model, download YOLOV3 weights from [YOLO website](http://pjreddie.com/darknet/yolo/).  
-2、Modify yolo3_weights_path in the config.py  
-3、Run detect.py  
-
+## Data Prepare
+1. Download the DETRAC dataset from [detrac_website](http://detrac-db.rit.albany.edu/download)  
+2. chage the config.py file to the location of your downloaded dataset.  
+3. run script in data to parse XML file.
 ```
-wget https://pjreddie.com/media/files/yolov3.weights  
-python detect.py --image_file ./test.jpg  
-```
-![result](https://raw.githubusercontent.com/aloyschen/tensorflow-yolo3/master/result.jpg)
-
+cd datasets
+python XML_parser.py
+python image_migrate.py  
+```  
 
 ## Training
 
-convert train and val data to tfrecord
-
-1、Download the COCO2017 dataset from [COCO_website](http://cocodataset.org)  
-2、Modify the train and val data path in the config.py  
-3、If you want to use original pretrained weights for YOLOv3, download from [darknet53 weights](https://pjreddie.com/media/files/darknet53.conv.74)   
-4、rename it as darknet53.weights, and modify the darknet53_weights_path in the config.py 
+1. If you want to use original pretrained weights for YOLOv3, download from [darknet53 weights](https://pjreddie.com/media/files/darknet53.conv.74)   
+2. rename it as darknet53.weights, and modify the darknet53_weights_path in the config.py 
 
 ```
 wget https://pjreddie.com/media/files/darknet53.conv.74`  
 ```  
-4、Modify the data augmentation parameters and train parameters  
-5、Run yolo_train.py  
+3. Modify the data augmentation parameters and train parameters  
+4. Run yolo_train.py  
 
 ## Evaluation
-1、Modify the pre_train_yolo3 and model_dir in config.py  
-2、Run detect.py  
+1. Modify the pre_train_yolo3 and model_dir in config.py  
+2. Run detect.py  
 
 ```
 python detect.py --image_file ./test.jpg
 ```
-
-## Train Image show on Tensorboard
-![train](https://github.com/aloyschen/tensorflow-yolo3/blob/master/model_data/TrainImage.png)   
 
 ## Notice
 
@@ -60,3 +56,4 @@ If you want to modify the Gpu index, please modify gpu_index in config.py
 
 ## Reference
 * [keras-yolo3](https://github.com/qqwweee/keras-yolo3)
+* [tf-yolo3](https://github.com/aloyschen/tensorflow-yolo3)
