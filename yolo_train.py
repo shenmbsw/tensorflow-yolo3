@@ -10,16 +10,18 @@ from collections import defaultdict
 from yolo_predict import yolo_predictor
 from utils import draw_box, load_weights, letterbox_image, voc_ap
 
-# 指定使用GPU的Index
+# GPU Index
 os.environ["CUDA_VISIBLE_DEVICES"] = config.gpu_index
 
 def train():
     """
     Introduction
     ------------
-        训练模型
+
     """
-    train_reader = Reader('train', config.data_dir, config.anchors_path, config.num_classes, input_shape = config.input_shape, max_boxes = config.max_boxes)
+    # train_reader = Reader('train', config.data_dir, config.anchors_path, config.num_classes, input_shape = config.input_shape, max_boxes = config.max_boxes)
+
+    train_reader = Reader('train', config.record_file, config.anchors_path, config.num_classes, input_shape=config.input_shape, max_boxes=config.max_boxes)
     train_data = train_reader.build_dataset(config.train_batch_size)
     is_training = tf.placeholder(tf.bool, shape = [])
     iterator = train_data.make_one_shot_iterator()
@@ -42,7 +44,7 @@ def train():
     global_step = tf.Variable(0, trainable = False)
     lr = tf.train.exponential_decay(config.learning_rate, global_step, decay_steps = 2000, decay_rate = 0.8)
     optimizer = tf.train.AdamOptimizer(learning_rate = lr)
-    # 如果读取预训练权重，则冻结darknet53网络的变量
+    # darknet53
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
         if config.pre_train:
@@ -53,40 +55,47 @@ def train():
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
     with tf.Session(config = tf.ConfigProto(log_device_placement = False)) as sess:
-        ckpt = tf.train.get_checkpoint_state(config.model_dir)
-        if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
-            print('restore model', ckpt.model_checkpoint_path)
-            saver.restore(sess, ckpt.model_checkpoint_path)
-        else:
-            sess.run(init)
-        if config.pre_train is True:
-            load_ops = load_weights(tf.global_variables(scope = 'darknet53'), config.darknet53_weights_path)
-            sess.run(load_ops)
-        summary_writer = tf.summary.FileWriter(config.log_dir, sess.graph)
-        loss_value = 0
-        for epoch in range(config.Epoch):
-            for step in range(int(config.train_num / config.train_batch_size)):
-                start_time = time.time()
-                train_loss, summary, global_step_value, _ = sess.run([loss, merged_summary, global_step, train_op], {is_training : True})
-                loss_value += train_loss
-                duration = time.time() - start_time
-                examples_per_sec = float(duration) / config.train_batch_size
-                format_str = ('Epoch {} step {},  train loss = {} ( {} examples/sec; {} ''sec/batch)')
-                print(format_str.format(epoch, step, loss_value / global_step_value, examples_per_sec, duration))
-                summary_writer.add_summary(summary = tf.Summary(value = [tf.Summary.Value(tag = "train loss", simple_value = train_loss)]), global_step = step)
-                summary_writer.add_summary(summary, step)
-                summary_writer.flush()
-            # 每3个epoch保存一次模型
-            if epoch % 3 == 0:
-                checkpoint_path = os.path.join(config.model_dir, 'model.ckpt')
-                saver.save(sess, checkpoint_path, global_step = global_step)
+      with tf.device("/gpu:0"):
+          ckpt = tf.train.get_checkpoint_state(config.model_dir)
+          if ckpt and tf.train.checkpoint_exists(ckpt.model_checkpoint_path):
+              print('restore model', ckpt.model_checkpoint_path)
+              saver.restore(sess, ckpt.model_checkpoint_path)
+          else:
+              sess.run(init)
+          if config.pre_train is True:
+              load_ops = load_weights(tf.global_variables(scope = 'darknet53'), config.darknet53_weights_path)
+              sess.run(load_ops)
+          summary_writer = tf.summary.FileWriter(config.log_dir, sess.graph)
+          loss_value = 0
+          max_iter = config.train_num / config.train_batch_size
+          for epoch in range(config.Epoch):
+              for step in range(int(config.train_num / config.train_batch_size)):
+                  start_time = time.time()
+                  train_loss, summary, global_step_value, _ = sess.run([loss, merged_summary, global_step, train_op], {is_training: True})
+                  loss_value += train_loss
+                  step_count = epoch * max_iter + step
+                  if step_count % 20 == 0 and step_count!=0:
+                      duration = time.time() - start_time
+                      examples_per_sec = float(duration) / config.train_batch_size
+                      format_str = ('Epoch {} step {},  train loss = {} ( {} examples/sec; {} ''sec/batch)')
+                      print(format_str.format(epoch, step, loss_value / 20, examples_per_sec, duration))
+                      loss_value = 0
+                      summary_writer.add_summary(
+                          summary=tf.Summary(value=[tf.Summary.Value(tag="train loss", simple_value=train_loss)]),
+                          global_step=step)
+                      summary_writer.add_summary(summary, step)
+                      summary_writer.flush()
+                      if step_count % 500 == 0:
+                          checkpoint_path = os.path.join(config.model_dir, 'model.ckpt')
+                          saver.save(sess, checkpoint_path, global_step=global_step)
+              checkpoint_path = os.path.join(config.model_dir, 'model.ckpt')
+              saver.save(sess, checkpoint_path, global_step=global_step)
 
 
 def eval(model_path, min_Iou = 0.5, yolo_weights = None):
     """
     Introduction
     ------------
-        计算模型在coco验证集上的MAP, 用于评价模型
     """
     ground_truth = {}
     class_pred = defaultdict(list)
@@ -95,7 +104,8 @@ def eval(model_path, min_Iou = 0.5, yolo_weights = None):
     input_image = tf.placeholder(shape = [None, 416, 416, 3], dtype = tf.float32)
     predictor = yolo_predictor(config.obj_threshold, config.nms_threshold, config.classes_path, config.anchors_path)
     boxes, scores, classes = predictor.predict(input_image, input_image_shape)
-    val_Reader = Reader("val", config.data_dir, config.anchors_path, config.num_classes, input_shape = config.input_shape, max_boxes = config.max_boxes)
+    # val_Reader = Reader("val", config.data_dir, config.anchors_path, config.num_classes, input_shape = config.input_shape, max_boxes = config.max_boxes)
+    val_Reader = Reader("val", config.record_file, config.anchors_path, config.num_classes, input_shape = config.input_shape, max_boxes=config.max_boxes)
     image_files, bboxes_data = val_Reader.read_annotations()
     with tf.Session() as sess:
         if yolo_weights is not None:
@@ -104,8 +114,10 @@ def eval(model_path, min_Iou = 0.5, yolo_weights = None):
             load_op = load_weights(tf.global_variables(scope = 'predict'), weights_file = yolo_weights)
             sess.run(load_op)
         else:
+            print('restore model', model_path)
             saver = tf.train.Saver()
             saver.restore(sess, model_path)
+
         for index in range(len(image_files)):
             val_bboxes = []
             image_file = image_files[index]
@@ -122,7 +134,6 @@ def eval(model_path, min_Iou = 0.5, yolo_weights = None):
             image_data = np.array(resize_image, dtype = np.float32)
             image_data /= 255.
             image_data = np.expand_dims(image_data, axis = 0)
-
             out_boxes, out_scores, out_classes = sess.run(
                 [boxes, scores, classes],
                 feed_dict = {
@@ -143,14 +154,11 @@ def eval(model_path, min_Iou = 0.5, yolo_weights = None):
 
                 bbox = [left, top, right, bottom]
                 class_pred[predicted_class].append({"confidence": str(score), "file_id": file_id, "bbox": bbox})
-
-    # 计算每个类别的AP
     sum_AP = 0.0
     count_true_positives = {}
     for class_index, class_name in enumerate(sorted(gt_counter_per_class.keys())):
         count_true_positives[class_name] = 0
         predictions_data = class_pred[class_name]
-        # 该类别总共有多少个box
         nd = len(predictions_data)
         tp = [0] * nd  # true positive
         fp = [0] * nd  # false positive
@@ -180,7 +188,6 @@ def eval(model_path, min_Iou = 0.5, yolo_weights = None):
                     fp[idx] = 1
             else:
                 fp[idx] = 1
-        # 计算精度和召回率
         sum_class = 0
         for idx, val in enumerate(fp):
             fp[idx] += sum_class
@@ -203,6 +210,5 @@ def eval(model_path, min_Iou = 0.5, yolo_weights = None):
 
 if __name__ == "__main__":
     train()
-    # 计算模型的Map
-    # eval(config.model_dir, yolo_weights = config.yolo3_weights_path)
+    # eval(config.model_dir)
 
