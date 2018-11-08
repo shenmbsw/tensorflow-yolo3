@@ -1,9 +1,10 @@
 import os
 import config
-import json
+# import json
 import tensorflow as tf
 import numpy as np
 from collections import defaultdict
+import xml.etree.ElementTree as ET
 
 class Reader:
     def __init__(self, mode, data_dir, anchors_path, num_classes, tfrecord_num = 12, input_shape = 416, max_boxes = 20):
@@ -30,7 +31,10 @@ class Reader:
         self.max_boxes = max_boxes
         self.mode = mode
         self.annotations_file = {'train' : config.train_annotations_file, 'val' : config.val_annotations_file}
-        self.data_file = {'train': config.train_data_file, 'val': config.val_data_file}
+        # self.data_file = {'train': config.train_data_file, 'val': config.val_data_file}
+        self.data_file = config.data_file
+        self.label_dict = config.label_dict
+
         self.anchors_path = anchors_path
         self.anchors = self._get_anchors()
         self.num_classes = num_classes
@@ -141,31 +145,24 @@ class Reader:
         boxes_data = []
         name_box_id = defaultdict(list)
         with open(self.annotations_file[self.mode], encoding='utf-8') as file:
-            data = json.load(file)
-            annotations = data['annotations']
-            for ant in annotations:
-                id = ant['image_id']
-                name = os.path.join(self.data_file[self.mode], '%012d.jpg' % id)
-                cat = ant['category_id']
-                if cat >= 1 and cat <= 11:
-                    cat = cat - 1
-                elif cat >= 13 and cat <= 25:
-                    cat = cat - 2
-                elif cat >= 27 and cat <= 28:
-                    cat = cat - 3
-                elif cat >= 31 and cat <= 44:
-                    cat = cat - 5
-                elif cat >= 46 and cat <= 65:
-                    cat = cat - 6
-                elif cat == 67:
-                    cat = cat - 7
-                elif cat == 70:
-                    cat = cat - 9
-                elif cat >= 72 and cat <= 82:
-                    cat = cat - 10
-                elif cat >= 84 and cat <= 90:
-                    cat = cat - 11
-                name_box_id[name].append([ant['bbox'], cat])
+            for id in file:
+                name = os.path.join(self.data_file, 'JPEGImages', '%s.jpg' % id[:-1])
+                # print('processing %s now'%name)
+                annotations = os.path.join(self.data_file, 'Annotations', '%s.xml' % id[:-1])
+                # print('processing %s now' % annotations)
+                tree = ET.parse(annotations)
+                root = tree.getroot()
+                for obj in root.findall('object'):
+                    label = obj.find('name').text
+                    cat_id = self.label_dict[label]
+
+                    bbox = obj.find('bndbox')
+                    x_min = float(bbox.find('xmin').text)
+                    y_min = float(bbox.find('ymin').text)
+                    x_max = float(bbox.find('xmax').text)
+                    y_max = float(bbox.find('ymax').text)
+                    boxes = [x_min, y_min, x_max, y_max]
+                    name_box_id[name].append([boxes, cat_id])
 
             for key in name_box_id.keys():
                 boxes = []
@@ -174,8 +171,8 @@ class Reader:
                 for info in box_infos:
                     x_min = info[0][0]
                     y_min = info[0][1]
-                    x_max = x_min + info[0][2]
-                    y_max = y_min + info[0][3]
+                    x_max = info[0][2]
+                    y_max = info[0][3]
                     boxes.append(np.array([x_min, y_min, x_max, y_max, info[1]]))
                 boxes_data.append(np.array(boxes))
 
